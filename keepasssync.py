@@ -59,10 +59,28 @@ def splitPath(path):
     return (db_path,db_pass)
 
 def help():
+    '''
+    Help Message to print out when a wrong action is done
+    '''
     print('\n=============\n\
 keepasssync needs two database paths : \n \
 \t keepasssync.py /path/to/db1.kdb[:Password1] /path/to/db2.kdb[:Password2]  [/path/to/NewDB.kdb[:NewPassword]] \n ')
     quit()
+
+
+def cleanGroupAdd(db,group):
+    # KeepassX sometimes put an image=0, kppy does not accept it
+    group_image=group.image
+    if group_image == 0 :
+        group_image +=1
+
+    # Check if the group as a parent or not
+    if group.level==0 :
+        db.create_group(title=str(group.title),image=group_image)
+    else :
+        db.create_group(title=group.title,image=group_image,parent=group.parent)
+
+    return db
 
 def syncDb(dbnew,db1,db2):
     '''
@@ -82,19 +100,12 @@ def syncDb(dbnew,db1,db2):
     correspondance1=[]
     ids_group1=[]
     # Adding the group from the first list to the new DB
-    for group in list_group1 : 
-        print('Group title to add:"'+group.title+'"\ttype: '+str(type(group.title))+ '\t\tLevel:'+str(group.level)+'\timage:'+str(group.image)+'\ttype image:'+str(type(group.image)))
-        
-        # KeepassX sometimes put an image=0, kppy does not accept it
-        group_image=group.image
-        if group_image == 0 :
-            group_image +=1
+    print('Starting to add groups from first DB')
 
-        # Check if the group as a parent or not
-        if group.level==0 :
-            dbnew.create_group(title=str(group.title),image=group_image)
-        else :
-            dbnew.create_group(title=group.title,image=group_image,parent=group.parent)
+    for group in list_group1 : 
+        print('Group to add:"'+group.title+'"\tID : '+str(group.id_)+ '\t\tLevel:'+str(group.level)+'\timage:'+str(group.image)+'\ttype image:'+str(type(group.image)))
+        cleanGroupAdd(dbnew,group)
+        
         # Append to a list the id of the group just added
         ids_group1.append(group.id_)
         correspondance1.append((dbnew.groups[len(dbnew.groups)-1],group))
@@ -102,15 +113,26 @@ def syncDb(dbnew,db1,db2):
     
     correspondance2=[]
     # Adding the group from the second list to the DB
+    print('\nStarting to add groups from second DB')
     for group in list_group2 :
+        print('\nGroup title to add:"'+group.title+'"\tID : '+str(group.id_)+ '\t\tLevel:'+str(group.level)+'\timage:'+str(group.image)+'\ttype image:'+str(type(group.image)))
         # Check if already present
         if group.id_ not in ids_group1 :
             # Not present
-            dbnew.create_group(dbnew, title=group. title,image=group.image, Parent=group.parent)
+            print('\t [+] Not present !')
+            cleanGroupAdd(dbnew,group)
+            correspondance2.append((dbnew.groups[len(dbnew.groups)-1],group))
         else :
             # already present
-            print('Group '+group.title+' already exists')
-        correspondance2.append((dbnew.groups[len(dbnew.groups)-1],group))
+            print('\t [-] Group already exists')
+            #[group1 for group1 in correspondance1 if group.id_==group1[1].group.id_][0][0]
+            # Have to find the already added group in correspondance1
+            correspondance2.append(([group1 for group1 in correspondance1 if group.id_==group1[1].id_][0][0] ,group))
+            #correspondance2.append((dbnew.groups[len(dbnew.groups)-1],group))
+
+    input('Check the group creation')
+
+
 
     # Syncing entries
     ids_entries=[]
@@ -118,36 +140,39 @@ def syncDb(dbnew,db1,db2):
     list_entries2=db2.entries
 
     for entry in list_entries1 :
-        ids_entries.append(entry.uuid)
-        print('\n\
-        Key to add : '+ entry.title+'\n\
-        Group : '+str(entry.group))
+        if entry.title != 'Meta-Info':
+            ids_entries.append(entry.uuid)
+            print('\nKey :'+entry.group.title+'/'+entry.title)
+            print('\t[+] Adding key ')
 
-        # Find corresponding group
-        #[item for item in a if item[1] == entry.group][0][0]
-        # This line find the corresponding group of the new DB from the correspondance1 list
-        dbnew.create_entry(group=[item for item in correspondance1 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password)
+            # Find corresponding group
+            #[item for item in a if item[1] == entry.group][0][0]
+            # This line find the corresponding group of the new DB from the correspondance1 list
+            dbnew.create_entry(group=[item for item in correspondance1 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password)
 
     for entry in list_entries2 : 
-        if entry.uuid in ids_entries:
-            print('Key existing : '+entry.title)
-            # Getting the similar entry from the first DB
-            entry_dup=[item for item in db1.entries if item.uuid == entry.uuid][0]
+        if entry.title != 'Meta-Info':
+            print('\nKey :'+entry.group.title+'/'+entry.title)
+            if entry.uuid in ids_entries:
+                print('[!] Key existing ')
+                # Getting the similar entry from the first DB
+                entry_dup=[item for item in db1.entries if item.uuid == entry.uuid][0]
 
-            # Comparing expiracy date
-            if entry_dup.last_mod >= entry.last_mod :
-                print('\tKeeping the first key')
-                print('\tSame date or older')
+                # Comparing expiracy date
+                if entry_dup.last_mod >= entry.last_mod :
+                    print('\t[=] Keeping the first key (same date or older)')
+                else :
+                    print('\t[<] Changing to second key')
+                    # Should delete the old one and add the new one
+                    # Deleting the old key
+                    dbnew.remove_entry([item for item in dbnew.entries if item.title == entry.title and item.username == entry.username ][0])
+                    # Adding the new key
+                    dbnew.create_entry(group=[item for item in correspondance2 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password)
+
             else :
-                print('\tChanging to second key')
-                # Should delete the old one and add the new one
-                # Deleting the old key
-                dbnew.remove_entry([item for item in dbnew.entries if item.title == entry.title and item.username == entry.username ][0])
-                # Adding the new key
+                print('[!] Key not existing')
+                print('\t[+] Adding key ')
                 dbnew.create_entry(group=[item for item in correspondance2 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password)
-
-        else :
-            dbnew.create_entry(group=[item for item in correspondance2 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password)
 
     return dbnew
 
@@ -190,8 +215,8 @@ db1=openDatabase(db1_path, db1_pass)
 db2=openDatabase(db2_path, db2_pass) 
 
 
-db2.load()
 db1.load()
+db2.load()
 
 
 
