@@ -82,6 +82,16 @@ def cleanGroupAdd(db,group):
 
     return db
 
+def cleanDb(db):
+    # Because wit kppy a group is automatically created, called Internet, let's remove it, if empty
+    internet_group = [item for item in db.groups if item.title == 'Internet'][0] 
+    if len(internet_group.entries) == 0 :
+        print('\nDelete empty Internet Group')
+        internet_group.remove_group()
+
+    return db
+
+
 def syncDb(dbnew,db1,db2):
     '''
     Firstly add the first db's groups to the new db
@@ -130,7 +140,7 @@ def syncDb(dbnew,db1,db2):
             correspondance2.append(([group1 for group1 in correspondance1 if group.id_==group1[1].id_][0][0] ,group))
             #correspondance2.append((dbnew.groups[len(dbnew.groups)-1],group))
 
-    input('Check the group creation')
+    #input('Check the group creation')
 
 
 
@@ -148,8 +158,9 @@ def syncDb(dbnew,db1,db2):
             # Find corresponding group
             #[item for item in a if item[1] == entry.group][0][0]
             # This line find the corresponding group of the new DB from the correspondance1 list
-            dbnew.create_entry(group=[item for item in correspondance1 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password)
+            dbnew.create_entry(group=[item for item in correspondance1 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password,comment=entry.comment)
 
+    print ('\n\nAdding second entry list\n\n')
     for entry in list_entries2 : 
         if entry.title != 'Meta-Info':
             print('\nKey :'+entry.group.title+'/'+entry.title)
@@ -165,14 +176,16 @@ def syncDb(dbnew,db1,db2):
                     print('\t[<] Changing to second key')
                     # Should delete the old one and add the new one
                     # Deleting the old key
+                    print('\t\t[-] Deleting old key')
                     dbnew.remove_entry([item for item in dbnew.entries if item.title == entry.title and item.username == entry.username ][0])
                     # Adding the new key
-                    dbnew.create_entry(group=[item for item in correspondance2 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password)
+                    print('\t\t[+] Adding new key')
+                    dbnew.create_entry(group=[item for item in correspondance2 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password,comment=entry.comment)
 
             else :
                 print('[!] Key not existing')
                 print('\t[+] Adding key ')
-                dbnew.create_entry(group=[item for item in correspondance2 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password)
+                dbnew.create_entry(group=[item for item in correspondance2 if item[1] == entry.group][0][0],title=entry.title,image=entry.image,url=entry.url,username=entry.username,password=entry.password,comment=entry.comment)
 
     return dbnew
 
@@ -238,6 +251,7 @@ dbnew=KPDBv1(filepath=dbnew_path, password=dbnew_pass,  read_only=False, new=Tru
 # Creating the group architecture
 dbnew=syncDb(dbnew,db1,db2)
 
+dbnew = cleanDb(dbnew)
 
 
 
@@ -249,3 +263,5 @@ dbnew.save()
 dbnew.close()
 db1.close()
 db2.close()
+
+print('\nSync went good :D ')
